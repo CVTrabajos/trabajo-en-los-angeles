@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trabajo en Los Ángeles | Ofertas Laborales Actualizadas</title>
 <meta name="description" content="Portal de ofertas de empleo y vacantes laborales en Los Ángeles y la Región del Biobío.">
-<link rel="preload" href="ofertas.json" as="fetch" crossorigin>
 <style>
 :root{--primary:#1565D8;--bg:#F4F6F9;--card:#fff;--text:#1E293B;--muted:#64748B;--border:#E2E8F0}
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
@@ -52,13 +51,13 @@ footer{max-width:680px;margin:40px auto 0;text-align:center;padding:0 20px;font-
     <p>Recuerda Tener Precaución en tus postulaciones</p>
   </div>
 </header>
- 
+
 <main class="container">
   <div class="search-box">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
     <input type="text" id="searchInput" placeholder="Buscar por cargo, empresa o palabra clave...">
   </div>
- 
+
   <div class="filters-wrapper">
     <button class="scroll-arrow" id="scrollLeft" aria-label="Izquierda">‹</button>
     <div class="filters-scroll" id="filtersScroll">
@@ -75,32 +74,33 @@ footer{max-width:680px;margin:40px auto 0;text-align:center;padding:0 20px;font-
     </div>
     <button class="scroll-arrow" id="scrollRight" aria-label="Derecha">›</button>
   </div>
- 
+
   <div class="stats-bar"><span id="jobCount">Cargando vacantes...</span><span>Región del Biobío</span></div>
- 
+
   <div class="job-list" id="jobList">
     <div class="job-card sk"><i style="height:22px;width:35%"></i><i style="height:20px;width:80%"></i><i style="height:16px;width:50%"></i><i style="height:44px"></i></div>
     <div class="job-card sk"><i style="height:22px;width:30%"></i><i style="height:20px;width:70%"></i><i style="height:16px;width:45%"></i><i style="height:44px"></i></div>
     <div class="job-card sk"><i style="height:22px;width:40%"></i><i style="height:20px;width:75%"></i><i style="height:16px;width:55%"></i><i style="height:44px"></i></div>
   </div>
   <div class="no-results" id="noResults" style="display:none"><p>No se encontraron vacantes para este criterio de búsqueda.</p></div>
- 
+
   <footer>
     <div class="disclaimer"><strong>⚠️ Información Importante:</strong> Nosotros no gestionamos postulaciones, no recibimos currículums ni representamos a las empresas contratantes. Nunca transfieras dinero para participar en procesos de selección.</div>
     <p>© Trabajo en Los Ángeles • Comunidad de empleo regional</p>
   </footer>
 </main>
- 
+
 <script>
 const CACHE_KEY = 'ofertas_losangeles_v1';
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzeHvye5DPFJvl0Qg75wfT2dMeBlIWQQ4FJI8XrmkZ0ko3MjkCFpbqREfRaxfTW79y0Uw/exec";
 const CAT_COLORS = {comercial:'#FF8A00',ventas:'#FF8A00',retail:'#FF8A00',tecnico:'#00CED1',técnico:'#00CED1',mantenimiento:'#00CED1',mantencion:'#00CED1',logistica:'#D4AC0D',logística:'#D4AC0D',bodega:'#D4AC0D',administrativo:'#1565D8',oficina:'#1565D8',rrhh:'#1565D8',salud:'#2EAF62',tens:'#2EAF62',construccion:'#FF0000',construcción:'#FF0000',educacion:'#9C27B0',educación:'#9C27B0',gastronomia:'#795548',gastronomía:'#795548',cocina:'#795548',otros:'#999999'};
- 
+
 let jobsData = [], activeCategory = 'all', searchQuery = '';
 const $ = id => document.getElementById(id);
- 
+
 function esc(s){return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function colorOf(cat){const l = String(cat || '').toLowerCase(); for (const [k,v] of Object.entries(CAT_COLORS)) if (l.includes(k)) return v; return '#999999';}
- 
+
 function renderJobs(){
   const q = searchQuery, cat = activeCategory.toLowerCase();
   const list = jobsData.filter(j => {
@@ -121,7 +121,7 @@ function renderJobs(){
     </div>`;
   }).join('');
 }
- 
+
 $('searchInput').addEventListener('input', e => { searchQuery = e.target.value.toLowerCase().trim(); renderJobs(); });
 document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.filter-btn').forEach(x => x.classList.remove('active'));
@@ -131,30 +131,36 @@ const sc = $('filtersScroll');
 $('scrollLeft').onclick = () => sc.scrollBy({left:-220,behavior:'smooth'});
 $('scrollRight').onclick = () => sc.scrollBy({left:220,behavior:'smooth'});
 sc.addEventListener('wheel', e => { if (e.deltaY){ e.preventDefault(); sc.scrollLeft += e.deltaY; } }, {passive:false});
- 
+
 // 1) Mostrar al instante lo último guardado en el navegador
 try {
   const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
   if (Array.isArray(cached) && cached.length){ jobsData = cached; renderJobs(); }
 } catch(e){}
- 
-// 2) Traer la lista actualizada (archivo ofertas.json, rápido)
-fetch('ofertas.json?v=' + Math.floor(Date.now() / 300000))
+
+// 2) Pedir los datos: archivo rápido (ofertas.json) y, en paralelo, los datos EN VIVO del Excel
+let liveLoaded = false, failed = 0;
+function showError(){
+  if (jobsData.length || failed < 2) return;
+  $('jobList').innerHTML = ''; $('jobCount').textContent = '';
+  $('noResults').innerHTML = '<p style="color:#DC2626">No se pudieron cargar las ofertas. Recarga la página en unos minutos.</p>';
+  $('noResults').style.display = 'block';
+}
+function aplicar(data, esLive){
+  if (!Array.isArray(data) || !data.length) throw new Error('vacío');
+  if (!esLive && liveLoaded) return;
+  if (esLive) liveLoaded = true;
+  jobsData = data; renderJobs();
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch(e){}
+}
+fetch('ofertas.json', {cache: 'no-cache'})
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-  .then(data => {
-    if (!Array.isArray(data) || !data.length) throw new Error('vacío');
-    jobsData = data; renderJobs();
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch(e){}
-  })
-  .catch(() => {
-    if (!jobsData.length){
-      $('jobList').innerHTML = '';
-      $('jobCount').textContent = '';
-      $('noResults').innerHTML = '<p style="color:#DC2626">No se pudieron cargar las ofertas. Recarga la página en unos minutos.</p>';
-      $('noResults').style.display = 'block';
-    }
-  });
+  .then(d => aplicar(d, false))
+  .catch(() => { failed++; showError(); });
+fetch(APPS_SCRIPT_URL)
+  .then(r => r.json())
+  .then(d => aplicar(d, true))
+  .catch(() => { failed++; showError(); });
 </script>
 </body>
 </html>
- 
